@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 — unreleased
+## 0.1.1 — 2026-11-02
 
 - An object tracked again under a removed object's ID sends the removal once, and its own first sample in a later check. Before, the removal was sent again with every check.
 - A `gone` removal waits until its record is queued, like one from `removeObject()`, so a full queue no longer loses it.
