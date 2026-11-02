@@ -14,7 +14,7 @@ Without a bundler, import it from a CDN in a module script:
 
 ```html
 <script type="module">
-  import { createTestingFloor } from 'https://cdn.jsdelivr.net/npm/@testingfloor/browser@0.1.1/+esm'
+  import { createTestingFloor } from 'https://cdn.jsdelivr.net/npm/@testingfloor/browser@0.2.0/+esm'
 </script>
 ```
 
