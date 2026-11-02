@@ -88,6 +88,8 @@ export interface ClientOptions {
   objectChecksPerSecond?: number
   objectMinDistance?: number
   movementTracking?: boolean
+  /** Seconds between movement samples while the player moves. */
+  movementMinPingInterval?: number
   appVersion?: string
   engine?: string
   os?: string
@@ -120,9 +122,9 @@ export class Client {
   maxTrackedObjects = 256
   objectChecksPerSecond = 4
   objectMinDistance = 0.25
-  movementTracking = false
+  movementTracking = true
   movementMinPingDistance = 0.5
-  movementMinPingInterval = 0.5
+  movementMinPingInterval = 0.1
   movementStartGrace = 0.05
   movementStopGrace = 0.25
   movementMinStep = 0.005

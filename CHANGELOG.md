@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0 — unreleased
+
+- Movement samples (`player_moved`) are on by default and come up to ten times a second while the player moves. They used to be off, and two a second once turned on, which drew a half-second jump as a straight line. `movementMinPingInterval` is now a documented option.
+
 ## 0.1.1 — 2026-11-02
 
 - An object tracked again under a removed object's ID sends the removal once, and its own first sample in a later check. Before, the removal was sent again with every check.

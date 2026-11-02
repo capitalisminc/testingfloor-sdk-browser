@@ -56,3 +56,29 @@ test('a gone object is reported after its record was dropped', () => {
     .flatMap(record => (record['removed.id'] ?? []).map((id: string, index: number) => [id, record['removed.reason'][index]]))
   assert.deepEqual(removed, [['crate', 'gone']], 'the removal is sent once the queue has room')
 })
+
+test('by default, a half-second jump gets several movement samples', () => {
+  let nowMs = 1767225600000
+  let seconds = 0
+  const bodies: string[] = []
+  let player = { x: 0, y: 0 }
+  const client = new Client({
+    writeKey: 'test-only-never-transmitted',
+    flushIntervalSeconds: 1e9,
+    clockMs: () => nowMs,
+    transport: (body, done) => { bodies.push(body); done(200) }
+  })
+  client.activitySource = () => ({ playerPosition: player })
+  client.start(0)
+  assert.equal(client.movementTracking, true)
+  const advance = (ms: number): void => { nowMs += ms; seconds += ms / 1000; client.tick(seconds) }
+  advance(100)
+  // A jump in pixels, sampled by the game every 50 ms.
+  for (let step = 0; step < 10; step++) {
+    player = { x: step * 10, y: Math.sin(step * Math.PI / 9) * 48 }
+    advance(50)
+  }
+  client.flush()
+  const samples = bodies.flatMap(body => JSON.parse(body).events).filter(event => event.$name === 'player_moved')
+  assert.ok(samples.length >= 4, `a jump gets several samples, not one: ${samples.length}`)
+})

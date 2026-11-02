@@ -53,6 +53,8 @@ testingFloor.recordTeleport(from, to, 'respawn')
 
 Positions are in the game's own units. A 2D position has no `z`. A tracked object whose position source returns `null` is removed as `gone`.
 
+From the activity source, the SDK sends `player_moved` samples up to ten times a second while the player or camera moves, so a half-second jump gets several samples. Testing Floor draws player paths and position heatmaps from them, and hides them in event lists by default. Pass `movementMinPingInterval` (in seconds) to send fewer, for example in a slow-moving game, or `movementTracking: false` to turn them off. Without an activity source, nothing is sent. `recordTeleport` keeps a respawn or level restart from counting as movement.
+
 ## Recordings
 
 When Testing Floor opens a browser game for a recording, it adds the recording to the game's URL, and the SDK attaches every event to it:
