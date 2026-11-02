@@ -62,7 +62,24 @@ When Testing Floor opens a browser game for a recording, it adds the recording t
 
 The handoff is kept in session storage, so reloading the tab keeps the recording.
 
-While a recording is attached, the SDK asks Testing Floor about every 5 seconds whether it is still open. An open recording renews a 20-second lease; if the game loses contact for longer, its events stop carrying the recording. When the recording ends, the SDK sends its completion marker. Until the first answer, events carry the recording without a lease. When the page is hidden for good, the SDK completes the session and hands what is still queued to `sendBeacon`.
+While a recording is attached, the SDK asks Testing Floor about every 5 seconds whether it is still open. An open recording renews a 20-second lease; if the game loses contact for longer, its events stop carrying the recording. When the recording ends, the SDK sends its completion marker. Until the first answer, events carry the recording without a lease.
+
+## Closing
+
+When the page is hidden for good (`pagehide`), the SDK closes the session: it completes the recording and hands everything still queued to `sendBeacon`, which outlives the page. A request already open is left to finish.
+
+A game that sends its own final events on `pagehide`, such as how a run ended, turns this off and closes the session after them:
+
+```js
+const testingFloor = createTestingFloor({ writeKey: 'tf_tel_…', closeOnPageHide: false })
+
+window.addEventListener('pagehide', () => {
+  testingFloor.track('run_ended', { reason: 'page_hidden' })
+  testingFloor.close()
+})
+```
+
+Events tracked after `close()` are refused.
 
 ## Delivery
 

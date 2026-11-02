@@ -17,6 +17,11 @@ export interface BrowserOptions extends Omit<ClientOptions, 'transport' | 'recor
   url?: string
   /** Testing Floor's recording-state endpoint. */
   recordingStateUrl?: string
+  /**
+   * Close the session when the page is hidden for good. Turn it off to send
+   * your own final events on pagehide, then call close() after them.
+   */
+  closeOnPageHide?: boolean
 }
 
 interface Environment {
@@ -32,26 +37,47 @@ interface Environment {
   fetch?: typeof fetch
 }
 
+/** A client for a page: close() ends the session and sends what is left in a way that outlives the page. */
+export class BrowserClient extends Client {
+  #unload: ((body: string) => boolean) | null
+
+  constructor (options: ClientOptions, unload: ((body: string) => boolean) | null) {
+    super(options)
+    this.#unload = unload
+  }
+
+  /**
+   * Ends the play session, completes an attached recording, and hands
+   * everything still queued to sendBeacon. Events tracked afterward are refused.
+   */
+  close (): void {
+    this.shutdown()
+    if (this.#unload) this.sendRemaining(this.#unload)
+  }
+}
+
 /**
  * Starts Testing Floor in a browser game: reads the recording handoff from the
  * page URL, keeps player IDs in local storage, sends with fetch, ticks ten times
- * a second, and completes the session when the page is hidden for good.
+ * a second, and closes the session when the page is hidden for good.
  */
-export function createTestingFloor (options: BrowserOptions, environment: Environment = globalThis as Environment): Client {
+export function createTestingFloor (options: BrowserOptions, environment: Environment = globalThis as Environment): BrowserClient {
   const page = options.url ?? environment.location?.href ?? ''
+  const endpoint = options.endpoint ?? 'https://dataentry.testingfloor.com'
   const handoff = readHandoff(page, environment)
   const state = new RecordingState(handoff, options.writeKey ?? '', options.recordingStateUrl ?? RECORDING_STATE_URL, environment.fetch?.bind(environment))
-  const client = new Client({
+  const { closeOnPageHide = true, ...clientOptions } = options
+  const client = new BrowserClient({
     os: 'Web',
     locale: languageTag(environment.navigator?.language ?? ''),
     isAutomation: environment.navigator?.webdriver === true,
     userId: storedId(environment.localStorage, PROFILE_KEY),
     deviceId: storedId(environment.localStorage, INSTALLATION_KEY),
-    ...options,
-    transport: fetchTransport(options.endpoint ?? 'https://dataentry.testingfloor.com', environment),
+    ...clientOptions,
+    transport: fetchTransport(endpoint, environment),
     recordingSource: now => state.source(now),
     recordingStore: state.store
-  })
+  }, beaconSender(endpoint, environment))
   const now = (): number => globalThis.performance?.now() / 1000 || Date.now() / 1000
   client.screenSize = environment.innerWidth && environment.innerHeight ? { width: environment.innerWidth, height: environment.innerHeight } : null
   client.start(now())
@@ -64,10 +90,7 @@ export function createTestingFloor (options: BrowserOptions, environment: Enviro
     client.tick(now())
   }, TICK_MS)
   // pagehide is the last event a page reliably gets, including on mobile.
-  environment.addEventListener?.('pagehide', () => {
-    client.shutdown()
-    beaconRemaining(client, options.endpoint ?? 'https://dataentry.testingfloor.com', environment)
-  })
+  if (closeOnPageHide) environment.addEventListener?.('pagehide', () => client.close())
   return client
 }
 
@@ -153,15 +176,12 @@ export function fetchTransport (endpoint: string, environment: Environment = glo
   }
 }
 
-/** After shutdown, hands what is still queued to sendBeacon, which outlives the page. */
-function beaconRemaining (client: Client, endpoint: string, environment: Environment): void {
+/** Sends one request body with sendBeacon, which outlives the page, or null where there is none. */
+function beaconSender (endpoint: string, environment: Environment): ((body: string) => boolean) | null {
   const beacon = environment.navigator?.sendBeacon?.bind(environment.navigator)
-  if (!beacon) return
+  if (!beacon) return null
   const url = `${endpoint.trim().replace(/\/+$/, '')}/v1/batch`
-  const original = client.transport
-  client.transport = (body, done) => done(beacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' })) ? 200 : 0)
-  for (let attempt = 0; attempt < 20 && client.pendingCount() > 0; attempt++) client.flush()
-  client.transport = original
+  return body => beacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }))
 }
 
 export type { Recording }

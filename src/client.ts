@@ -50,6 +50,8 @@ const OBJECTS_RECORD = '$tf_objects'
 const EVENT_BYTES = 32768
 /** Below the collector's 1 MiB request limit, with room for the envelope. */
 const REQUEST_BYTES = 1048576 - 8192
+/** Below the 64 KiB browsers allow for a request that outlives its page. */
+const UNLOAD_REQUEST_BYTES = 60000
 const OBJECT_SAMPLES_PER_RECORD = 300
 const OBJECT_RECORD_BYTES = 20480
 const KEYFRAME_SECONDS = 300
@@ -598,31 +600,58 @@ export class Client {
 
   // Delivery
 
+  /**
+   * Hands every queued record to send at once, one batch per body, for a page
+   * that is going away: sendBeacon outlives the page but reports no response.
+   * A request already open is left to finish. The completion marker still goes
+   * alone, after the batches before it. A batch that send refuses stays queued
+   * with everything after it.
+   */
+  sendRemaining (send: (body: string) => boolean, maxBytes = UNLOAD_REQUEST_BYTES): void {
+    if (this.deliveryState !== 'ok' && this.deliveryState !== 'network_down') return
+    while (this.#queue.length > 0) {
+      const batch = this.#takeBatch(maxBytes)
+      if (!send(this.#requestBody(batch))) {
+        this.#queue = batch.concat(this.#queue)
+        return
+      }
+    }
+  }
+
   #sendNext (): void {
     if (this.#requestOpen || this.#queue.length === 0 || this.#seconds < this.#nextRetry || !this.transport) return
     if (this.deliveryState !== 'ok' && this.deliveryState !== 'network_down') return
+    const batch = this.#takeBatch(REQUEST_BYTES)
+    this.#inFlight = batch
+    this.#requestOpen = true
+    this.#lastFlush = this.#seconds
+    const request = ++this.#request
+    this.transport(this.#requestBody(batch), status => this.#completeSend(request, status))
+  }
+
+  /** The next request's records: the completion marker alone, or gameplay records for one recording. */
+  #takeBatch (maxBytes: number): Queued[] {
     const batch: Queued[] = []
     const first = this.#queue[0]
     if (first.event.$name === COMPLETION_RECORD) {
       first.event.dropped_events = this.#recordingDrops.get(first.recording) ?? 0
       batch.push(this.#queue.shift() as Queued)
-    } else {
-      let bytes = 64 + this.writeKey.length
-      while (this.#queue.length > 0 && batch.length < Math.min(2000, Math.max(1, this.batchMaxEvents))) {
-        const next = this.#queue[0]
-        if (next.event.$name === COMPLETION_RECORD || next.recording !== first.recording) break
-        const size = utf8Length(JSON.stringify(next.event)) + 1
-        if (batch.length > 0 && bytes + size > REQUEST_BYTES) break
-        bytes += size
-        batch.push(this.#queue.shift() as Queued)
-      }
+      return batch
     }
-    this.#inFlight = batch
-    this.#requestOpen = true
-    this.#lastFlush = this.#seconds
-    const request = ++this.#request
-    const body = JSON.stringify({ $write_key: this.writeKey, $sent_at: isoTime(this.clockMs()), events: batch.map(item => item.event) })
-    this.transport(body, status => this.#completeSend(request, status))
+    let bytes = 64 + this.writeKey.length
+    while (this.#queue.length > 0 && batch.length < Math.min(2000, Math.max(1, this.batchMaxEvents))) {
+      const next = this.#queue[0]
+      if (next.event.$name === COMPLETION_RECORD || next.recording !== first.recording) break
+      const size = utf8Length(JSON.stringify(next.event)) + 1
+      if (batch.length > 0 && bytes + size > maxBytes) break
+      bytes += size
+      batch.push(this.#queue.shift() as Queued)
+    }
+    return batch
+  }
+
+  #requestBody (batch: Queued[]): string {
+    return JSON.stringify({ $write_key: this.writeKey, $sent_at: isoTime(this.clockMs()), events: batch.map(item => item.event) })
   }
 
   #completeSend (request: number, status: number): void {

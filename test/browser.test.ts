@@ -67,3 +67,53 @@ test('a browser client attaches the handoff recording and sends text/plain', asy
   assert.equal(event.$tf.screen_width, 1280)
   assert.ok(event.$user_id && event.$device_id && event.$user_id !== event.$device_id, 'separate profile and installation IDs')
 })
+
+function unloadingPage (fetchResponds: boolean) {
+  const listeners = new Map<string, () => void>()
+  const fetched: string[] = []
+  const beacons: Blob[] = []
+  const environment = {
+    location: { href: 'https://game.example/?tf_recording_uuid=example-recording' },
+    localStorage: new MemoryStorage() as unknown as Storage,
+    sessionStorage: new MemoryStorage() as unknown as Storage,
+    navigator: { sendBeacon: (_url: string, data: BodyInit) => { beacons.push(data as Blob); return true } },
+    addEventListener: (type: string, listener: () => void) => { listeners.set(type, listener) },
+    fetch: (async (url: string, init: RequestInit) => {
+      if (url.endsWith('/v1/batch')) fetched.push(init.body as string)
+      if (fetchResponds) return new Response('{}', { status: 200 })
+      return await new Promise<Response>(() => {})
+    }) as unknown as typeof fetch
+  }
+  const names = async (): Promise<string[][]> => await Promise.all(beacons.map(async beacon => JSON.parse(await beacon.text()).events.map((event: { $name: string }) => event.$name)))
+  return { environment, listeners, fetched, beacons, names }
+}
+
+test('closing the page while a request is open hands everything else to sendBeacon, with the marker alone and last', async () => {
+  const page = unloadingPage(false)
+  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted' }, page.environment)
+  for (let index = 0; index < 120; index++) client.track('jumped')
+  client.flush()
+  assert.equal(page.fetched.length, 1, 'the first batch is open')
+  page.listeners.get('pagehide')?.()
+  const beacons = await page.names()
+  const marker = beacons.at(-1)
+  assert.deepEqual(marker, ['$tf_telemetry_complete'])
+  assert.equal(JSON.parse(await page.beacons.at(-1)!.text()).events[0].dropped_events, 0)
+  const sent = JSON.parse(page.fetched[0]).events.length + beacons.slice(0, -1).flat().filter(name => name === 'jumped').length
+  assert.equal(sent, 120, 'every event left in a request')
+  assert.equal(client.pendingCount(), JSON.parse(page.fetched[0]).events.length, 'only the open request remains')
+})
+
+test('a game that closes the session itself sends its final events before the marker', async () => {
+  const page = unloadingPage(true)
+  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted', closeOnPageHide: false }, page.environment)
+  assert.equal(page.listeners.has('pagehide'), false)
+  client.track('jumped')
+  client.flush()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  assert.equal(client.track('run_ended', { reason: 'page_hidden' }), true)
+  client.close()
+  assert.equal(client.track('too_late'), false)
+  const sent = page.fetched.flatMap(body => JSON.parse(body).events.map((event: { $name: string }) => event.$name)).concat((await page.names()).flat())
+  assert.ok(sent.indexOf('run_ended') >= 0 && sent.indexOf('run_ended') < sent.indexOf('$tf_telemetry_complete'), sent.join(', '))
+})
