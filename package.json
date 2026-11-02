@@ -1,0 +1,12 @@
+{
+  "name": "@testingfloor/browser",
+  "version": "0.1.0",
+  "description": "Testing Floor SDK for browser games: gameplay telemetry and recording sync for playtests.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}
