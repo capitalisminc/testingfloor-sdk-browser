@@ -20,5 +20,13 @@ jobs:
       - name: Check the SDK contract copy
         run: python3 scripts/update_contract.py --check
 
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
       - name: Run the scenarios and tests
         run: npm test
+
+      - name: Build the package
+        run: npm pack --dry-run

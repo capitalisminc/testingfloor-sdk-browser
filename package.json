@@ -2,11 +2,43 @@
   "name": "@testingfloor/browser",
   "version": "0.1.0",
   "description": "Testing Floor SDK for browser games: gameplay telemetry and recording sync for playtests.",
-  "type": "module",
+  "keywords": [
+    "testingfloor",
+    "telemetry",
+    "analytics",
+    "playtest",
+    "gamedev",
+    "phaser"
+  ],
+  "homepage": "https://github.com/capitalisminc/testingfloor-sdk-browser#readme",
+  "bugs": "https://github.com/capitalisminc/testingfloor-sdk-browser/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/capitalisminc/testingfloor-sdk-browser.git"
+  },
   "license": "MIT",
-  "private": true,
-  "engines": { "node": ">=22.18.0" },
+  "author": "Testing Floor",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "test": "node --test test/*.test.ts"
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "5.9.3"
   }
 }

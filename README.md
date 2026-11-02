@@ -4,6 +4,22 @@ Send gameplay telemetry from a browser game to [Testing Floor](https://testingfl
 
 The SDK follows the shared [Testing Floor SDK contract](https://github.com/capitalisminc/testingfloor-sdk-contract), like the Unity, Unreal and Godot SDKs.
 
+## Install
+
+```sh
+npm install @testingfloor/browser
+```
+
+Without a bundler, import it from a CDN in a module script:
+
+```html
+<script type="module">
+  import { createTestingFloor } from 'https://cdn.jsdelivr.net/npm/@testingfloor/browser@0.1.0/+esm'
+</script>
+```
+
+The package is ES modules with TypeScript declarations and no dependencies.
+
 ## Start
 
 ```js
@@ -60,7 +76,9 @@ The profile ID (sent as the player ID) and the installation ID are kept in local
 npm test
 ```
 
-Tests run the shared contract scenarios in `test/contract/scenarios`, check that everything the client sends is declared in the telemetry contract, and test the browser entry point with fakes. They need Node 22.18 or later, which runs TypeScript directly. `python3 scripts/update_contract.py` refreshes the contract copy; `--check` confirms it.
+Tests run the shared contract scenarios in `test/contract/scenarios`, check that everything the client sends is declared in the telemetry contract, and test the browser entry point with fakes. They need Node 22.18 or later, which runs TypeScript directly. `npm run typecheck` checks types and `npm run build` writes the package to `dist/`. `python3 scripts/update_contract.py` refreshes the contract copy; `--check` confirms it.
+
+Pushing a `v<version>` tag that matches `package.json` publishes to npm from GitHub Actions, with provenance.
 
 ## License
 
