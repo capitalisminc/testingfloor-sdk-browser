@@ -26,6 +26,7 @@ The package is ES modules with TypeScript declarations and no dependencies.
 import { createTestingFloor } from '@testingfloor/browser'
 
 const testingFloor = createTestingFloor({
+  gameId: 'example-game',       // stable for this game, including after key rotation
   writeKey: 'tf_tel_…',          // the game's telemetry key
   engine: 'Phaser 3.80.1',       // optional, sent as $tf.engine
   appVersion: '1.4.0'
@@ -33,6 +34,8 @@ const testingFloor = createTestingFloor({
 
 testingFloor.track('level_started', { 'game_level.id': 'forest' })
 ```
+
+`gameId` is required. Use a stable identifier for the game, distinct from other games on the same origin; do not use a write key, build version, or level URL. Profile IDs, installation IDs, and recording handoffs are stored per game, so rotating a write key preserves identity and another game cannot inherit a recording. An empty game ID disables collection. Earlier unscoped generated identities are not imported automatically because the SDK cannot know which game owned them; IDs your game supplies still take precedence.
 
 Property values can be strings, finite numbers, booleans, and arrays of strings or of integers. Other values, keys beginning with `$`, and event names beginning with `$tf_` are refused, as in every Testing Floor SDK. `track` returns `false` when the event was not queued.
 
@@ -65,7 +68,7 @@ Send the camera as well as the player. Testing Floor's map then draws the part o
 
 If a HUD covers part of the screen, send the part of the world that stays visible.
 
-From the activity source, the SDK sends `player_moved` samples up to ten times a second while the player or camera moves, so a half-second jump gets several samples. Testing Floor draws player paths and position heatmaps from them, and hides them in event lists by default. Pass `movementMinPingInterval` (in seconds) to send fewer, for example in a slow-moving game, or `movementTracking: false` to turn them off. Without an activity source, nothing is sent. `recordTeleport` keeps a respawn or level restart from counting as movement.
+From the activity source, the SDK sends `$tf_player_moved` samples up to ten times a second while the player or camera moves, so a half-second jump gets several samples. Testing Floor draws player paths and position heatmaps from them, and hides them in event lists by default. Pass `movementMinPingInterval` (in seconds) to send fewer, for example in a slow-moving game, or `movementTracking: false` to turn them off. Without an activity source, nothing is sent. `recordTeleport` keeps a respawn or level restart from counting as movement.
 
 ## Recordings
 
@@ -76,16 +79,16 @@ When Testing Floor opens a browser game for a recording, it adds the recording t
 
 The handoff is kept in session storage, so reloading the tab keeps the recording.
 
-While a recording is attached, the SDK asks Testing Floor about every 5 seconds whether it is still open. An open recording renews a 20-second lease; if the game loses contact for longer, its events stop carrying the recording. When the recording ends, the SDK sends its completion marker. Until the first answer, events carry the recording without a lease.
+While a recording is attached, the SDK asks Testing Floor about every 5 seconds whether it is still open. An open recording renews a 20-second lease; if the game loses contact for longer, its events stop carrying the recording. When the recording ends, the SDK sends its completion marker. Before the first answer, the recording has a fixed 20-second startup grace lease. An unknown recording or failed poll cannot restart that grace or revive an expired live lease. Events then continue without the recording until the server confirms an active lease.
 
 ## Closing
 
-When the page is hidden for good (`pagehide`), the SDK closes the session: it completes the recording and hands everything still queued to `sendBeacon`, which outlives the page. A request already open is left to finish.
+When the page is hidden for good (`pagehide`), the SDK closes the session and hands everything still queued to `sendBeacon`, which outlives the page. A completion marker sent this way is flagged as interrupted: beacon acceptance does not prove earlier requests reached the server. Normal acknowledged delivery retains its completion guarantee. A request already open is left to finish.
 
 A game that sends its own final events on `pagehide`, such as how a run ended, turns this off and closes the session after them:
 
 ```js
-const testingFloor = createTestingFloor({ writeKey: 'tf_tel_…', closeOnPageHide: false })
+const testingFloor = createTestingFloor({ gameId: 'example-game', writeKey: 'tf_tel_…', closeOnPageHide: false })
 
 window.addEventListener('pagehide', () => {
   testingFloor.track('run_ended', { reason: 'page_hidden' })
@@ -101,6 +104,10 @@ Events are sent in batches of up to 50, every quarter second, one request at a t
 
 The profile ID (sent as the player ID) and the installation ID are kept in local storage. Collection is off when the page is driven by automation (`navigator.webdriver`).
 
+## Supported API
+
+The package entrypoint exposes the game client, its options and gameplay types, the SDK version, and vector-property helpers. The game client includes recording identity and change notifications. Protocol parsers, polling state, custom transports, and the lower-level client are available only from `@testingfloor/browser/internal`; that entrypoint is intentionally unstable.
+
 ## Develop
 
 ```sh
@@ -114,3 +121,45 @@ Pushing a `v<version>` tag that matches `package.json` publishes to npm from Git
 ## License
 
 MIT. See [LICENSE.md](LICENSE.md).
+
+
+## Build identity and collection mode
+
+Pass `buildId` for the immutable artifact identity also used by build upload and
+map publication. It is separate from the readable `appVersion`. Changing the game
+artifact requires a new ID; the SDK sends the configured value without guessing
+one from a version label. Native coordinates and always-collect behavior remain the
+defaults.
+
+Set `collectionMode: 'recording_only'` to collect only with an active recording
+handoff. Discovery continues while collection is dormant, so a later recording
+can attach. Pause or lease expiry suspends collection; a fresh active lease
+resumes it. Browser startup confirmation is bounded by the grace window above.
+
+## Coordinate conversion
+
+Supply one optional `coordinateTransform` instead of repeating conversion in an
+event processor and each tracked-object source:
+
+```ts
+const tf = createTestingFloor({
+  gameId: 'example-game',
+  writeKey: 'your-game-write-key',
+  buildId: 'example-artifact',
+  coordinateTransform: { axes: [1, -2, 3], scale: 2, offset: { x: 10, y: 20, z: 30 } }
+})
+```
+
+The signed axes choose native X/Y/Z as 1/2/3. Each axis appears once, and scale
+must be positive and finite. Points include offset; directions omit offset and
+scale. Player/camera event fields, focus points, teleport endpoints and distances,
+movement lengths, orthographic widths and tracked objects use that same transform.
+Sampling thresholds stay in native units; output lengths use the transformed
+coordinate unit. Object quantization happens in native space before conversion.
+Raw Euler metadata is omitted with a transform; provide forward/up for orientation.
+Arbitrary game properties and object state are preserved. The event processor runs
+after conversion; remove an old conversion hook when enabling this option.
+
+Automatic movement and teleport helpers now emit `$tf_player_moved` and
+`$tf_player_teleported`. Those names are reserved; game-owned names remain available,
+and historical unprefixed SDK samples remain readable by the server.

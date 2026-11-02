@@ -1,6 +1,6 @@
 {
   "name": "@testingfloor/browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Testing Floor SDK for browser games: gameplay telemetry and recording sync for playtests.",
   "keywords": [
     "testingfloor",
@@ -23,6 +23,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
     }
   },
   "types": "./dist/index.d.ts",
@@ -35,7 +39,7 @@
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

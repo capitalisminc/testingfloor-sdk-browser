@@ -79,6 +79,6 @@ test('by default, a half-second jump gets several movement samples', () => {
     advance(50)
   }
   client.flush()
-  const samples = bodies.flatMap(body => JSON.parse(body).events).filter(event => event.$name === 'player_moved')
+  const samples = bodies.flatMap(body => JSON.parse(body).events).filter(event => event.$name === '$tf_player_moved')
   assert.ok(samples.length >= 4, `a jump gets several samples, not one: ${samples.length}`)
 })

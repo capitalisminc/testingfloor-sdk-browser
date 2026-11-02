@@ -88,7 +88,7 @@ test('everything sent uses declared names', () => {
       } else if (sdkRecords.has(name)) {
         for (const key of properties) assert.ok(sdkRecords.get(name)?.includes(key), `${name} field ${key}`)
       } else {
-        assert.ok(!name.startsWith('$'), `${name} is a game or SDK event`)
+        assert.ok(contract.sdk_events.some((event: Json) => event.name === name) || !name.startsWith('$'), `${name} is a game or declared SDK event`)
         for (const key of properties) {
           const sdkOwned = ['player.', 'camera.', 'movement.', 'teleport.'].some(prefix => key.startsWith(prefix))
           assert.ok(!sdkOwned || conventional.includes(key), `${name}: SDK property ${key} is declared`)
