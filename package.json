@@ -1,6 +1,6 @@
 {
   "name": "@testingfloor/browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Testing Floor SDK for browser games: gameplay telemetry and recording sync for playtests.",
   "keywords": [
     "testingfloor",

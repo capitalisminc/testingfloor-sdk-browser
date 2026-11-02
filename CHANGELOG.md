@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.1 — unreleased
+
+- An object tracked again under a removed object's ID sends the removal once, and its own first sample in a later check. Before, the removal was sent again with every check.
+
+## 0.1.0 — 2026-11-02
 
 - First version: events, session state, tracked objects, movement and teleports, delivery with the contract's batching, retry and drop rules, and recording association, following the shared Testing Floor SDK contract and running its scenarios.
 - Reads the recording handoff from the `#testing-floor=` fragment or the `tf_recording_uuid` query parameter the desktop app adds, and keeps it for reloads of the same tab.

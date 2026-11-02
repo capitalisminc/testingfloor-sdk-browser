@@ -43,7 +43,7 @@ export interface RecordingStore {
   writeStatus (recording: Recording, sessionId: string, status: Record<string, unknown>): void
 }
 
-export const SDK_VERSION = '0.1.0'
+export const SDK_VERSION = '0.1.1'
 const COMPLETION_RECORD = '$tf_telemetry_complete'
 const STATE_RECORD = '$tf_state'
 const OBJECTS_RECORD = '$tf_objects'
@@ -775,7 +775,11 @@ export class Client {
     if (!this.isCollecting()) return
     const keyframe = this.#objectsKeyframeDue
     const rows: ObjectRow[] = [...this.#removals]
+    const removedIds = new Set(this.#removals.map(removal => removal.id))
     for (const [id, object] of this.#objects) {
+      // An object tracked again under a removed object's ID starts in the next
+      // check, so its first sample comes after the removal.
+      if (removedIds.has(id)) continue
       const point = vector3(safeCall(object.source))
       if (point === null) {
         this.#objects.delete(id)
@@ -815,11 +819,11 @@ export class Client {
       if (this.#enqueue(OBJECTS_RECORD, this.#objectRecord(group), keyframe, false, this.#exposed, time)) {
         for (const row of group) {
           const object = this.#objects.get(row.id)
-          if (object) {
+          if (row.reason) {
+            this.#removals = this.#removals.filter(removal => removal !== row)
+          } else if (object) {
             if (row.position) object.sent = row.position
             Object.assign(object.sentState, row.state)
-          } else {
-            this.#removals = this.#removals.filter(removal => removal !== row)
           }
         }
       } else {
