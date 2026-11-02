@@ -782,8 +782,11 @@ export class Client {
       if (removedIds.has(id)) continue
       const point = vector3(safeCall(object.source))
       if (point === null) {
+        // The removal waits in #removals until its record is queued, like one from removeObject().
         this.#objects.delete(id)
-        rows.push({ id, kind: object.kind, position: object.known, state: {}, reason: 'gone' })
+        const removal: ObjectRow = { id, kind: object.kind, position: object.known, state: {}, reason: 'gone' }
+        this.#removals.push(removal)
+        rows.push(removal)
         continue
       }
       object.known = point
