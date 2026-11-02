@@ -4,3 +4,4 @@ export { createTestingFloor, fetchTransport, languageTag, readHandoff } from './
 export type { BrowserOptions } from './browser.ts'
 export { hasActiveLease, hasLiveLease, parseRecording, resolveRecording } from './recording.ts'
 export type { Recording } from './recording.ts'
+export { RECORDING_STATE_URL, RecordingState } from './recording-state.ts'

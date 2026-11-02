@@ -44,7 +44,9 @@ When Testing Floor opens a browser game for a recording, it adds the recording t
 - The desktop app adds `?tf_recording_uuid=<id>&tf_suppress_qr=<true|false>` today.
 - A `#testing-floor=<JSON>` fragment with the full handoff is also read. The SDK removes it from the address bar.
 
-The handoff is kept in session storage, so reloading the tab keeps the recording. When the page is hidden for good, the SDK completes the session and hands what is still queued to `sendBeacon`.
+The handoff is kept in session storage, so reloading the tab keeps the recording.
+
+While a recording is attached, the SDK asks Testing Floor about every 5 seconds whether it is still open. An open recording renews a 20-second lease; if the game loses contact for longer, its events stop carrying the recording. When the recording ends, the SDK sends its completion marker. Until the first answer, events carry the recording without a lease. When the page is hidden for good, the SDK completes the session and hands what is still queued to `sendBeacon`.
 
 ## Delivery
 

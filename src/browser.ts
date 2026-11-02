@@ -1,7 +1,7 @@
 import { Client, newUuid } from './client.ts'
 import type { ClientOptions, Transport } from './client.ts'
-import { parseRecording } from './recording.ts'
 import type { Recording } from './recording.ts'
+import { RECORDING_STATE_POLL_MS, RECORDING_STATE_URL, RecordingState } from './recording-state.ts'
 
 /** The fragment Testing Floor adds to a game URL: #testing-floor=<JSON handoff>. */
 const FRAGMENT = 'testing-floor='
@@ -15,6 +15,8 @@ export interface BrowserOptions extends Omit<ClientOptions, 'transport' | 'recor
   engine?: string
   /** Read the recording handoff from this URL instead of the page's. */
   url?: string
+  /** Testing Floor's recording-state endpoint. */
+  recordingStateUrl?: string
 }
 
 interface Environment {
@@ -38,6 +40,7 @@ interface Environment {
 export function createTestingFloor (options: BrowserOptions, environment: Environment = globalThis as Environment): Client {
   const page = options.url ?? environment.location?.href ?? ''
   const handoff = readHandoff(page, environment)
+  const state = new RecordingState(handoff, options.writeKey ?? '', options.recordingStateUrl ?? RECORDING_STATE_URL, environment.fetch?.bind(environment))
   const client = new Client({
     os: 'Web',
     locale: languageTag(environment.navigator?.language ?? ''),
@@ -46,11 +49,16 @@ export function createTestingFloor (options: BrowserOptions, environment: Enviro
     deviceId: storedId(environment.localStorage, INSTALLATION_KEY),
     ...options,
     transport: fetchTransport(options.endpoint ?? 'https://dataentry.testingfloor.com', environment),
-    recordingSource: now => handoff === null ? null : parseRecording(handoff, now)
+    recordingSource: now => state.source(now),
+    recordingStore: state.store
   })
   const now = (): number => globalThis.performance?.now() / 1000 || Date.now() / 1000
   client.screenSize = environment.innerWidth && environment.innerHeight ? { width: environment.innerWidth, height: environment.innerHeight } : null
   client.start(now())
+  if (handoff) {
+    void state.poll(Date.now())
+    environment.setInterval?.(() => { void state.poll(Date.now()) }, RECORDING_STATE_POLL_MS)
+  }
   environment.setInterval?.(() => {
     if (environment.innerWidth && environment.innerHeight) client.screenSize = { width: environment.innerWidth, height: environment.innerHeight }
     client.tick(now())
