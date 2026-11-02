@@ -39,11 +39,15 @@ Property values can be strings, finite numbers, booleans, and arrays of strings 
 ```js
 testingFloor.contextProvider = () => ({ 'game_level.id': level.id, 'player.health': player.health })
 testingFloor.stateProvider = () => ({ 'settings.difficulty': difficulty })
+// Phaser's Y grows downward; Testing Floor's X/Y maps want +Y up, so Y is negated.
 testingFloor.activitySource = () => ({
-  playerPosition: { x: player.x, y: player.y },
-  cameraPosition: { x: camera.scrollX, y: camera.scrollY },
+  playerPosition: { x: player.x, y: -player.y },
+  // A 2D camera: orthographic, looking straight into the screen.
+  cameraPosition: { x: camera.scrollX + camera.width / 2, y: -(camera.scrollY + camera.height / 2) },
+  cameraForward: { x: 0, y: 0, z: -1 },
+  cameraUp: { x: 0, y: 1, z: 0 },
   cameraOrthoWidth: camera.width / camera.zoom,
-  viewportSize: { width: window.innerWidth, height: window.innerHeight }
+  viewportSize: { width: camera.width, height: camera.height }
 })
 
 const id = testingFloor.trackObject('enemy', () => (enemy.active ? { x: enemy.x, y: enemy.y } : null))
@@ -52,6 +56,14 @@ testingFloor.recordTeleport(from, to, 'respawn')
 ```
 
 Positions are in the game's own units. A 2D position has no `z`. A tracked object whose position source returns `null` is removed as `gone`.
+
+Send the camera as well as the player. Testing Floor's map then draws the part of the level on screen as a rectangle that follows the camera, showing what the player could see at each moment. A 2D camera is an orthographic camera looking straight into the screen:
+
+- `cameraPosition` is the center of the view.
+- `cameraForward` points into the screen and `cameraUp` toward its top.
+- `cameraOrthoWidth` is the view's width in world units, and `viewportSize` the visible area's size, which sets the rectangle's height.
+
+If a HUD covers part of the screen, send the part of the world that stays visible.
 
 From the activity source, the SDK sends `player_moved` samples up to ten times a second while the player or camera moves, so a half-second jump gets several samples. Testing Floor draws player paths and position heatmaps from them, and hides them in event lists by default. Pass `movementMinPingInterval` (in seconds) to send fewer, for example in a slow-moving game, or `movementTracking: false` to turn them off. Without an activity source, nothing is sent. `recordTeleport` keeps a respawn or level restart from counting as movement.
 
