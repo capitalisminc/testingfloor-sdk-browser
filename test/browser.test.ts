@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createTestingFloor, languageTag, readHandoff } from '../src/browser.ts'
+import { createTestingFloorForEnvironment as createTestingFloor, languageTag, readHandoff } from '../src/browser.ts'
 
 class MemoryStorage {
   values = new Map<string, string>()
@@ -14,9 +14,9 @@ test('the fragment handoff is read, kept for reloads and removed from the addres
   const environment = { sessionStorage, history: { replaceState: (_data: unknown, _unused: string, url?: string) => { replaced.push(url ?? '') } } }
   const handoff = JSON.stringify({ recording_uuid: 'example-recording', playtest_id: 42 })
   const url = `https://game.example/play/?level=2#testing-floor=${encodeURIComponent(handoff)}`
-  assert.equal(readHandoff(url, environment), handoff)
+  assert.equal(readHandoff(url, environment, 'example-game'), handoff)
   assert.deepEqual(replaced, ['/play/?level=2'])
-  assert.equal(readHandoff('https://game.example/play/?level=2', environment), handoff, 'a reload in the same tab keeps it')
+  assert.equal(readHandoff('https://game.example/play/?level=2', environment, 'example-game'), handoff, 'a reload in the same tab keeps it')
 })
 
 test('the desktop app query handoff is read', () => {
@@ -49,7 +49,7 @@ test('a browser client attaches the handoff recording and sends text/plain', asy
       return new Response('{}', { status: 200 })
     }) as unknown as typeof fetch
   }
-  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted', engine: 'Phaser 3.80.1' }, environment)
+  const client = createTestingFloor({ gameId: 'example-game', writeKey: 'test-only-never-transmitted', engine: 'Phaser 3.80.1' }, environment)
   assert.equal(client.getRecording()?.recordingUuid, 'example-recording')
   assert.equal(client.track('level_started'), true)
   client.flush()
@@ -90,7 +90,7 @@ function unloadingPage (fetchResponds: boolean) {
 
 test('closing the page while a request is open hands everything else to sendBeacon, with the marker alone and last', async () => {
   const page = unloadingPage(false)
-  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted' }, page.environment)
+  const client = createTestingFloor({ gameId: 'example-game', writeKey: 'test-only-never-transmitted' }, page.environment)
   for (let index = 0; index < 120; index++) client.track('jumped')
   client.flush()
   assert.equal(page.fetched.length, 1, 'the first batch is open')
@@ -98,6 +98,7 @@ test('closing the page while a request is open hands everything else to sendBeac
   const beacons = await page.names()
   const marker = beacons.at(-1)
   assert.deepEqual(marker, ['$tf_telemetry_complete'])
+  assert.equal(JSON.parse(await page.beacons.at(-1)!.text()).events[0].interrupted, true, 'beacons cannot confirm preceding delivery')
   assert.equal(JSON.parse(await page.beacons.at(-1)!.text()).events[0].dropped_events, 0)
   const sent = JSON.parse(page.fetched[0]).events.length + beacons.slice(0, -1).flat().filter(name => name === 'jumped').length
   assert.equal(sent, 120, 'every event left in a request')
@@ -106,7 +107,7 @@ test('closing the page while a request is open hands everything else to sendBeac
 
 test('a game that closes the session itself sends its final events before the marker', async () => {
   const page = unloadingPage(true)
-  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted', closeOnPageHide: false }, page.environment)
+  const client = createTestingFloor({ gameId: 'example-game', writeKey: 'test-only-never-transmitted', closeOnPageHide: false }, page.environment)
   assert.equal(page.listeners.has('pagehide'), false)
   client.track('jumped')
   client.flush()
@@ -116,4 +117,40 @@ test('a game that closes the session itself sends its final events before the ma
   assert.equal(client.track('too_late'), false)
   const sent = page.fetched.flatMap(body => JSON.parse(body).events.map((event: { $name: string }) => event.$name)).concat((await page.names()).flat())
   assert.ok(sent.indexOf('run_ended') >= 0 && sent.indexOf('run_ended') < sent.indexOf('$tf_telemetry_complete'), sent.join(', '))
+})
+
+
+test('game storage is isolated and survives write-key rotation', () => {
+  const shared = {
+    localStorage: new MemoryStorage() as unknown as Storage,
+    sessionStorage: new MemoryStorage() as unknown as Storage,
+    fetch: (async () => new Response('{}', { status: 404 })) as typeof fetch
+  }
+  const first = createTestingFloor({ gameId: 'game-a', writeKey: 'example-first-key', url: 'https://game.example/a?tf_recording_uuid=recording-a' }, shared)
+  const second = createTestingFloor({ gameId: 'game-b', writeKey: 'example-other-key', url: 'https://game.example/b' }, shared)
+  const rotated = createTestingFloor({ gameId: 'game-a', writeKey: 'example-rotated-key', url: 'https://game.example/a' }, shared)
+  assert.notEqual(first.userId, second.userId)
+  assert.notEqual(first.deviceId, second.deviceId)
+  assert.equal(second.getRecording(), null)
+  assert.equal(rotated.userId, first.userId)
+  assert.equal(rotated.deviceId, first.deviceId)
+  assert.equal(rotated.getRecording()?.recordingUuid, 'recording-a')
+})
+
+test('missing game configuration collects nothing and creates no shared identity', () => {
+  const storage = new MemoryStorage()
+  const client = createTestingFloor({ gameId: '', writeKey: 'example-key' }, { localStorage: storage as unknown as Storage })
+  assert.equal(client.isCollecting(), false)
+  assert.equal(client.track('not_collected'), false)
+  assert.equal(storage.values.size, 0)
+})
+
+test('the supported entrypoint does not export protocol adapters', async () => {
+  const gameApi = await import('../src/index.ts')
+  assert.equal(typeof gameApi.createTestingFloor, 'function')
+  for (const name of ['Client', 'BrowserClient', 'parseRecording', 'readHandoff', 'RecordingState', 'fetchTransport']) {
+    assert.equal(name in gameApi, false, name)
+  }
+  const internal = await import('../src/internal.ts')
+  assert.equal(typeof internal.Client, 'function')
 })

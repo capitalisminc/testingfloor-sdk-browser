@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- Require a stable game ID and isolate browser identities and handoffs per game.
+- Bound unconfirmed recording handoffs; preserve expired confirmed leases on 404.
+- Mark beacon completion as unconfirmed and carry recording pauses into collection policy.
+- Add immutable build-ID context, recording-only mode and shared coordinate conversion.
+- Move automatic movement/teleport events into the reserved SDK namespace.
+- Limit root exports to the game API; protocol helpers move to the unstable `/internal` entrypoint.
+
+This is a source API upgrade: add `gameId` and migrate protocol-helper imports.
+Installed older games retain their existing wire support. Coordinate conversion
+and recording-only mode are opt-in.
+
 ## 0.2.0 — 2026-11-02
 
 - Movement samples (`player_moved`) are on by default and come up to ten times a second while the player moves. They used to be off, and two a second once turned on, which drew a half-second jump as a straight line. `movementMinPingInterval` is now a documented option.

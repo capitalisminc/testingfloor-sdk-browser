@@ -10,7 +10,9 @@ const PROFILE_KEY = 'testingfloor.profile_id'
 const INSTALLATION_KEY = 'testingfloor.installation_id'
 const TICK_MS = 100
 
-export interface BrowserOptions extends Omit<ClientOptions, 'transport' | 'recordingSource' | 'clockMs'> {
+export interface BrowserOptions extends Omit<ClientOptions, 'transport' | 'recordingSource' | 'recordingStore' | 'clockMs' | 'isEditor' | 'isAutomation'> {
+  /** Stable game identity for storage; keep it unchanged when rotating the write key. */
+  gameId: string
   /** The game's engine and version, such as "Phaser 3.80.1". Left out when not given. */
   engine?: string
   /** Read the recording handoff from this URL instead of the page's. */
@@ -61,19 +63,26 @@ export class BrowserClient extends Client {
  * page URL, keeps player IDs in local storage, sends with fetch, ticks ten times
  * a second, and closes the session when the page is hidden for good.
  */
-export function createTestingFloor (options: BrowserOptions, environment: Environment = globalThis as Environment): BrowserClient {
+export function createTestingFloor (options: BrowserOptions): TestingFloorClient {
+  return createTestingFloorForEnvironment(options, globalThis as Environment)
+}
+
+export function createTestingFloorForEnvironment (options: BrowserOptions, environment: Environment): BrowserClient {
   const page = options.url ?? environment.location?.href ?? ''
   const endpoint = options.endpoint ?? 'https://dataentry.testingfloor.com'
-  const handoff = readHandoff(page, environment)
+  const gameId = typeof options.gameId === 'string' ? options.gameId.trim() : ''
+  const namespace = encodeURIComponent(gameId)
+  const handoff = readHandoff(page, environment, gameId)
   const state = new RecordingState(handoff, options.writeKey ?? '', options.recordingStateUrl ?? RECORDING_STATE_URL, environment.fetch?.bind(environment))
   const { closeOnPageHide = true, ...clientOptions } = options
   const client = new BrowserClient({
     os: 'Web',
     locale: languageTag(environment.navigator?.language ?? ''),
-    isAutomation: environment.navigator?.webdriver === true,
-    userId: storedId(environment.localStorage, PROFILE_KEY),
-    deviceId: storedId(environment.localStorage, INSTALLATION_KEY),
+    userId: gameId ? storedId(environment.localStorage, `${PROFILE_KEY}:${namespace}`) : '',
+    deviceId: gameId ? storedId(environment.localStorage, `${INSTALLATION_KEY}:${namespace}`) : '',
     ...clientOptions,
+    isAutomation: environment.navigator?.webdriver === true,
+    writeKey: gameId ? clientOptions.writeKey : '',
     transport: fetchTransport(endpoint, environment),
     recordingSource: now => state.source(now),
     recordingStore: state.store
@@ -100,7 +109,7 @@ export function createTestingFloor (options: BrowserOptions, environment: Enviro
  * earlier load of this tab saved. The fragment is removed from the address bar
  * and kept in session storage, so a reload keeps the recording.
  */
-export function readHandoff (url: string, environment: Environment = globalThis as Environment): string | null {
+export function readHandoff (url: string, environment: Environment = globalThis as Environment, gameId = ''): string | null {
   let handoff: string | null = null
   let parsed: URL | null = null
   try {
@@ -126,8 +135,9 @@ export function readHandoff (url: string, environment: Environment = globalThis 
     })
   }
   try {
-    if (handoff) environment.sessionStorage?.setItem(HANDOFF_KEY, handoff)
-    else handoff = environment.sessionStorage?.getItem(HANDOFF_KEY) ?? null
+    const key = gameId ? `${HANDOFF_KEY}:${encodeURIComponent(gameId)}` : null
+    if (key && handoff) environment.sessionStorage?.setItem(key, handoff)
+    else if (key) handoff = environment.sessionStorage?.getItem(key) ?? null
   } catch {
     // Storage can be unavailable, such as in a private window.
   }
@@ -184,4 +194,17 @@ function beaconSender (endpoint: string, environment: Environment): ((body: stri
   return body => beacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }))
 }
 
+export type TestingFloorClient = Pick<BrowserClient,
+  'track' | 'setState' | 'clearState' | 'trackObject' | 'setObjectState' | 'removeObject' |
+  'beginTeleport' | 'endTeleport' | 'cancelTeleport' | 'recordTeleport' | 'flush' | 'close' |
+  'isCollecting' | 'collectionReason' | 'pendingCount' |
+  'contextProvider' | 'stateProvider' | 'activitySource' | 'eventProcessor' |
+  'userId' | 'deviceId' | 'playSessionId' | 'droppedEvents' | 'deliveryState'> & {
+  getRecording (): RecordingInfo | null
+  onRecordingChanged (listener: (recording: RecordingInfo | null) => void): () => void
+}
+
+export type RecordingInfo = Pick<Recording, 'recordingUuid' | 'playtestId'>
+
 export type { Recording }
+

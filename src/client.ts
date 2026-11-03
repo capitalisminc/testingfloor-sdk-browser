@@ -1,3 +1,5 @@
+import { CoordinateSpace } from './coordinates.ts'
+import type { CoordinateTransform } from './coordinates.ts'
 import { hasActiveLease, hasLiveLease } from './recording.ts'
 import type { Recording } from './recording.ts'
 
@@ -43,7 +45,7 @@ export interface RecordingStore {
   writeStatus (recording: Recording, sessionId: string, status: Record<string, unknown>): void
 }
 
-export const SDK_VERSION = '0.2.0'
+export const SDK_VERSION = '0.3.0'
 const COMPLETION_RECORD = '$tf_telemetry_complete'
 const STATE_RECORD = '$tf_state'
 const OBJECTS_RECORD = '$tf_objects'
@@ -75,7 +77,12 @@ type Vector3 = [number, number, number]
 type Totals = Record<string, number>
 
 /** Configuration and seams. Set before start(); the browser entry point fills engine-backed ones. */
+export type CollectionMode = 'always' | 'recording_only'
+
 export interface ClientOptions {
+  collectionMode?: CollectionMode
+  coordinateTransform?: CoordinateTransform
+  buildId?: string
   writeKey?: string
   endpoint?: string
   enabled?: boolean
@@ -111,6 +118,9 @@ export interface ClientOptions {
  * start() once, then tick() every frame with monotonic real time in seconds.
  */
 export class Client {
+  #coordinates = new CoordinateSpace()
+  collectionMode: CollectionMode = 'always'
+  buildId = ''
   writeKey = ''
   endpoint = 'https://dataentry.testingfloor.com'
   enabled = true
@@ -219,6 +229,8 @@ export class Client {
 
   constructor (options: ClientOptions = {}) {
     Object.assign(this, options)
+    this.#coordinates = new CoordinateSpace(options.coordinateTransform)
+    if (!['always', 'recording_only'].includes(this.collectionMode)) throw new RangeError('Collection mode must be always or recording_only.')
   }
 
   // Lifecycle
@@ -301,7 +313,7 @@ export class Client {
     if (!this.enabled) return 'master_disabled'
     if (this.deliveryState === 'not_configured') return 'missing_configuration'
     if (this.deliveryState === 'rejected') return 'collector_rejected'
-    return 'editor_policy_disabled'
+    return this.collectionMode === 'recording_only' ? 'recording_required' : 'editor_policy_disabled'
   }
 
   /** The attached recording, or null while none is attached, suspended or closed. */
@@ -328,6 +340,7 @@ export class Client {
   }
 
   #policyPermits (): boolean {
+    if (this.collectionMode === 'recording_only' && (!this.#exposed || !hasActiveLease(this.#exposed, this.clockMs()))) return false
     if (!this.isEditor || this.enableInEditor) return true
     return this.enableInEditorWhileRecording && this.#exposed !== null && hasActiveLease(this.#exposed, this.clockMs())
   }
@@ -502,6 +515,10 @@ export class Client {
       if (this.isCollecting()) this.droppedEvents += 1
       return false
     }
+    return this.#trackGameplay(name, properties)
+  }
+
+  #trackGameplay (name: string, properties: Properties = {}): boolean {
     if (!this.isCollecting() || !name.trim()) return false
     const sample = this.#activity()
     this.#pollState(sample)
@@ -509,6 +526,7 @@ export class Client {
     merge(values, this.#properties(this.contextProvider))
     merge(values, activityProperties(sample))
     merge(values, properties)
+    this.#coordinates.properties(values)
     if (this.eventProcessor) {
       try {
         const processed = this.eventProcessor(values)
@@ -575,7 +593,7 @@ export class Client {
 
   #recordContext (): Record<string, unknown> {
     const context: Record<string, unknown> = { sdk_version: SDK_VERSION, editor: this.isEditor }
-    for (const [key, value] of [['engine', this.engine], ['os', this.os], ['locale', this.locale], ['app_version', this.appVersion], ['device_model', this.deviceModel]]) {
+    for (const [key, value] of [['engine', this.engine], ['os', this.os], ['locale', this.locale], ['app_version', this.appVersion], ['build_id', this.buildId], ['device_model', this.deviceModel]]) {
       if (value) context[key] = value
     }
     const size = this.screenSize
@@ -613,6 +631,7 @@ export class Client {
     if (this.deliveryState !== 'ok' && this.deliveryState !== 'network_down') return
     while (this.#queue.length > 0) {
       const batch = this.#takeBatch(maxBytes)
+      if (batch[0]?.event.$name === COMPLETION_RECORD) batch[0].event.interrupted = true
       if (!send(this.#requestBody(batch))) {
         this.#queue = batch.concat(this.#queue)
         return
@@ -850,9 +869,10 @@ export class Client {
       if (row.position) {
         columns['sample.id'].push(row.id)
         columns['sample.kind'].push(row.kind)
-        columns['sample.x'].push(round(row.position[0]))
-        columns['sample.y'].push(round(row.position[1]))
-        columns['sample.z'].push(round(row.position[2]))
+        const point = this.#coordinates.point(row.position.map(round) as Vector3)
+        columns['sample.x'].push(point[0])
+        columns['sample.y'].push(point[1])
+        columns['sample.z'].push(point[2])
       }
       if (row.reason) {
         columns['removed.id'].push(row.id)
@@ -923,7 +943,7 @@ export class Client {
       'teleport.duration': Math.max(0, duration)
     }
     if (reason) properties['teleport.reason'] = reason
-    this.track('player_teleported', properties)
+    this.#trackGameplay('$tf_player_teleported', properties)
   }
 
   #sampleMovement (now: number, sample: Activity): void {
@@ -998,7 +1018,7 @@ export class Client {
     for (const key of ['distance', 'rotation_degrees', 'fov_delta', 'camera_distance', 'ortho_width_delta']) {
       if ((totals[key] ?? 0) > 0) properties[`movement.${key}`] = totals[key]
     }
-    this.track('player_moved', properties)
+    this.#trackGameplay('$tf_player_moved', properties)
   }
 
   // Values
@@ -1145,3 +1165,4 @@ export function newUuid (): string {
 export function isoTime (unixMs: number): string {
   return new Date(unixMs).toISOString()
 }
+
