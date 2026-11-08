@@ -38,15 +38,17 @@ try {
   run(process.execPath, ['-e', `
     const sdk = require('@testingfloor/js')
     const browser = require('@testingfloor/js/browser')
+    const internal = require('@testingfloor/js/internal')
     if (typeof browser.createTestingFloor !== 'function') throw new Error('Missing browser export')
-    const client = sdk.createTestingFloor({ writeKey: 'test-only-never-transmitted', transport: (body, done) => done(200) })
+    if (typeof internal.Client !== 'function') throw new Error('Missing internal export')
+    const client = sdk.createTestingFloor({ writeKey: 'test-only-never-transmitted', fetch: async () => new Response('{}') })
     client.track('jumped')
     client.close().then(result => { if (result.status !== 'flushed') process.exitCode = 1 })
   `], { cwd: scratch })
   // A background client must allow a command-line process to exit without calling close.
   run(process.execPath, ['--input-type=module', '-e', `
     import { createTestingFloor } from '@testingfloor/js'
-    createTestingFloor({ writeKey: 'test-only-never-transmitted', transport: (body, done) => done(200) })
+    createTestingFloor({ writeKey: 'test-only-never-transmitted', fetch: async () => new Response('{}') })
   `], { cwd: scratch, timeout: 3000 })
 
   const typeSource = `
@@ -54,6 +56,10 @@ try {
     const client = createTestingFloor({ writeKey: 'test-only-never-transmitted', autoTick: false, sessionId: 'example-session' })
     const result: Promise<FlushResult> = client.close()
     void result
+    // @ts-expect-error protocol configuration belongs to the internal entry point
+    createTestingFloor({ transport: () => {} })
+    // @ts-expect-error public recording information contains identity, not lease machinery
+    client.getRecording()?.leaseVersion
   `
   for (const extension of ['mts', 'cts']) writeFileSync(join(scratch, `consumer.${extension}`), typeSource)
   writeFileSync(join(scratch, 'tsconfig.json'), JSON.stringify({

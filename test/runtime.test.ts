@@ -1,9 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createTestingFloor, TestingFloorClient } from '../src/runtime.ts'
+import { TestingFloorClient } from '../src/runtime.ts'
+import type { RuntimeOptions } from '../src/runtime.ts'
 import type { Transport } from '../src/client.ts'
 
 const writeKey = 'test-only-never-transmitted'
+const createTestingFloor = (options: RuntimeOptions = {}) => new TestingFloorClient(options)
 
 test('manual mode drains every batch and keeps player, state, and recording context separate', async () => {
   const bodies: string[] = []

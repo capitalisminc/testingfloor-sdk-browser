@@ -5,16 +5,17 @@ import type { Fetch } from './transport.ts'
 
 export const RECORDING_STATE_URL = 'https://api.testingfloor.com/telemetry/recording_state'
 export const RECORDING_STATE_POLL_MS = 5000
+const STARTUP_GRACE_MS = 20_000
 
-interface Answer { closed: boolean, leaseExpiresAtUnixMs: number }
+interface Answer { closed: boolean, leaseExpiresAtUnixMs: number, telemetryRequested?: boolean }
 
 /**
  * A JavaScript session's view of its attached recording. Testing
  * Floor's recording-state endpoint stands in for the lease file and closed.json
  * a desktop SDK reads: poll() asks it, source() gives the client the handoff
  * with the latest lease, and store answers whether the recording closed.
- * Until the first answer, and for a recording the endpoint does not know, the
- * handoff carries no lease, so events keep the recording.
+ * Until confirmation, a fixed startup grace lease bounds the association.
+ * Unknown answers never restart that grace or revive an expired live lease.
  */
 export class RecordingState {
   readonly handoff: string | null
@@ -26,6 +27,7 @@ export class RecordingState {
   #polling = false
   #disposed = false
   #cancel: (() => void) | null = null
+  #startedAt: number | null = null
 
   constructor (handoff: string | null, writeKey: string, url: string = RECORDING_STATE_URL, send: Fetch | undefined = globalThis.fetch?.bind(globalThis)) {
     this.handoff = handoff
@@ -50,13 +52,15 @@ export class RecordingState {
   /** The handoff for the client, with the endpoint's latest lease. */
   source (nowMs: number): Recording | null {
     const recording = parseRecording(this.handoff, nowMs)
-    if (!recording || !this.#answer) return recording
+    if (!recording) return null
+    this.#startedAt ??= nowMs
+    const lease = this.#answer ?? { closed: false, leaseExpiresAtUnixMs: this.#startedAt + STARTUP_GRACE_MS }
     return {
       ...recording,
       telemetryDirectory: this.url,
-      leaseVersion: this.#answer.closed ? recording.leaseVersion : 1,
-      telemetryRequested: true,
-      leaseExpiresAtUnixMs: this.#answer.closed ? recording.leaseExpiresAtUnixMs : this.#answer.leaseExpiresAtUnixMs
+      leaseVersion: lease.closed ? recording.leaseVersion : 1,
+      telemetryRequested: lease.telemetryRequested ?? true,
+      leaseExpiresAtUnixMs: lease.closed ? recording.leaseExpiresAtUnixMs : lease.leaseExpiresAtUnixMs
     }
   }
 
@@ -81,7 +85,6 @@ export class RecordingState {
       if (!response || this.#disposed) return
       if (response.status === 404) {
         await Promise.race([response.body?.cancel(), cancelled])
-        if (!this.#disposed) this.#answer = null
         return
       }
       if (!response.ok) {
@@ -90,9 +93,9 @@ export class RecordingState {
       }
       const body: unknown = await Promise.race([response.json(), cancelled])
       if (this.#disposed || !body || typeof body !== 'object') return
-      const { closed, lease_expires_at_unix_ms: lease } = body as Record<string, unknown>
+      const { closed, state, lease_expires_at_unix_ms: lease } = body as Record<string, unknown>
       if (closed === true) this.#answer = { closed: true, leaseExpiresAtUnixMs: 0 }
-      else if (closed === false && typeof lease === 'number' && Number.isFinite(lease)) this.#answer = { closed: false, leaseExpiresAtUnixMs: lease }
+      else if (closed === false && typeof lease === 'number' && Number.isFinite(lease)) this.#answer = { closed: false, leaseExpiresAtUnixMs: lease, telemetryRequested: typeof state === 'string' ? state === 'recording' : true }
     } catch {
       // Keep the last answer; an unreachable endpoint lets the lease run out.
     } finally {

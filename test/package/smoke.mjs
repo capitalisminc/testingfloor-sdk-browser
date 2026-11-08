@@ -23,12 +23,12 @@ assert(events.at(-1).$name === '$tf_telemetry_complete', 'completion must be las
 assert(events.every(event => event.$tf.sdk_version === SDK_VERSION), 'runtime and package versions must match')
 assert(requests.every(request => request.init.keepalive === undefined), 'server delivery must not depend on keepalive')
 
-const browser = createBrowser({ writeKey: 'test-only-never-transmitted', autoTick: false, fetch: send, closeOnPageHide: false }, {
-  location: { href: 'https://game.example/?tf_recording_uuid=example-recording' },
-  navigator: { language: 'en-US' }, innerWidth: 800, innerHeight: 600
+const browser = createBrowser({
+  gameId: 'example-game', writeKey: 'test-only-never-transmitted', autoTick: false, fetch: send, closeOnPageHide: false,
+  url: 'https://game.example/?tf_recording_uuid=example-recording'
 })
 browser.track('browser_event')
 assert((await browser.close()).status === 'flushed', 'browser adapter must drain')
 const browserEvent = requests.flatMap(request => JSON.parse(request.init.body).events).find(event => event.$name === 'browser_event')
-assert(browserEvent.$tf.os === 'Web' && browserEvent.$tf.screen_width === 800, 'browser metadata must be preserved')
+assert(browserEvent.$tf.os === 'Web', 'browser metadata must be preserved')
 console.log('Package smoke checks passed')

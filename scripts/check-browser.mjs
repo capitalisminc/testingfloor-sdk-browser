@@ -47,6 +47,7 @@ export async function checkBrowser (installed, smoke) {
     assert.equal(received[0].events[0].$name, 'native_backend_event')
     browser = await chromium.launch()
     const page = await browser.newPage()
+    await page.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }) })
     await page.goto(`${origin}/?tf_recording_uuid=example-recording`)
     await page.evaluate(async () => { await import('/smoke.mjs') })
     const result = await page.evaluate(async () => {
@@ -59,7 +60,7 @@ export async function checkBrowser (installed, smoke) {
       globalThis.clearInterval = timer => { timers.delete(timer); originalClear(timer) }
       try {
         const client = createTestingFloor({
-          writeKey: 'test-only-never-transmitted', isAutomation: false,
+          gameId: 'example-game', writeKey: 'test-only-never-transmitted',
           endpoint: location.origin, recordingStateUrl: location.origin + '/recording-state',
           fetch: async (url, init) => { requests.push({ url, body: init.body }); return await fetch(url, init) }
         })

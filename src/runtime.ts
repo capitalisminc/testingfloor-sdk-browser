@@ -3,8 +3,9 @@ import type { ClientOptions, DeliveryState } from './client.ts'
 import { RECORDING_STATE_POLL_MS, RecordingState } from './recording-state.ts'
 import { fetchTransport } from './transport.ts'
 import type { Fetch, FetchTransport } from './transport.ts'
+import type { Recording } from './recording.ts'
 
-export interface SdkOptions extends ClientOptions {
+export interface SdkOptions extends Omit<ClientOptions, 'transport' | 'recordingSource' | 'recordingStore' | 'clockMs' | 'isEditor' | 'isAutomation'> {
   /** An existing play session ID. Otherwise a new UUID is generated for this client. */
   sessionId?: string
   /** Run background updates. Set false in request-scoped or manually ticked environments. */
@@ -15,6 +16,20 @@ export interface SdkOptions extends ClientOptions {
   recordingHandoff?: string
   recordingStateUrl?: string
   fetch?: Fetch
+}
+
+/** Protocol and scheduling seams for the unstable internal entry point. */
+export interface RuntimeOptions extends SdkOptions, ClientOptions {}
+
+export type RecordingInfo = Pick<Recording, 'recordingUuid' | 'playtestId'>
+export type PublicClient = Pick<TestingFloorClient,
+  'track' | 'setState' | 'clearState' | 'trackObject' | 'setObjectState' | 'removeObject' |
+  'beginTeleport' | 'endTeleport' | 'cancelTeleport' | 'recordTeleport' | 'flush' | 'close' | 'shutdown' |
+  'tick' | 'refreshRecording' | 'isCollecting' | 'collectionReason' | 'pendingCount' |
+  'contextProvider' | 'stateProvider' | 'activitySource' | 'eventProcessor' |
+  'userId' | 'deviceId' | 'playSessionId' | 'droppedEvents' | 'deliveryState'> & {
+  getRecording (): RecordingInfo | null
+  onRecordingChanged (listener: (recording: RecordingInfo | null) => void): () => void
 }
 
 export interface FlushOptions {
@@ -49,7 +64,7 @@ export class TestingFloorClient extends Client {
   #closing: Promise<FlushResult> | null = null
   #disposed = false
 
-  constructor (options: SdkOptions = {}, environment: RuntimeEnvironment = scheduling) {
+  constructor (options: RuntimeOptions = {}, environment: RuntimeEnvironment = scheduling) {
     if (typeof globalThis.crypto?.randomUUID !== 'function') throw new Error('Testing Floor requires crypto.randomUUID().')
     const send = options.fetch ?? globalThis.fetch?.bind(globalThis)
     if (!options.transport && (!send || typeof AbortController === 'undefined')) {
@@ -162,6 +177,6 @@ export class TestingFloorClient extends Client {
 function monotonicSeconds (): number { return (globalThis.performance?.now() ?? Date.now()) / 1000 }
 
 /** Starts one Testing Floor session in Node.js, browsers, Bun, Deno, or a worker. */
-export function createTestingFloor (options: SdkOptions = {}): TestingFloorClient {
+export function createTestingFloor (options: SdkOptions = {}): PublicClient {
   return new TestingFloorClient(options)
 }
