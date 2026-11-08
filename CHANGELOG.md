@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — Unreleased
+
+- Renames the package to `@testingfloor/js`, with a runtime-independent main entry point for Node.js, Bun, Deno, and workers, and browser setup at `@testingfloor/js/browser`.
+- Adds ESM and CommonJS builds, with main-entry TypeScript declarations that do not need DOM types.
+- Adds awaitable `flush()`, `close()`, and `shutdown()` with deadlines and delivery results. Closing releases managed timers and listeners and cancels unfinished built-in HTTP requests.
+- Supports explicit user/session IDs and recording handoffs outside browsers. Each client owns one play session.
+- Retains browser storage keys, URL handoffs, and automatic pagehide beacon delivery. Custom pagehide handlers use `closeForPage()`; explicit `close()` now waits for HTTP delivery.
+
 ## 0.2.0 — 2026-11-02
 
 - Movement samples (`player_moved`) are on by default and come up to ten times a second while the player moves. They used to be off, and two a second once turned on, which drew a half-second jump as a straight line. `movementMinPingInterval` is now a documented option.

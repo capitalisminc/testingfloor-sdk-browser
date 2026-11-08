@@ -5,7 +5,7 @@
     "allowImportingTsExtensions": false,
     "rewriteRelativeImportExtensions": true,
     "declaration": true,
-    "outDir": "dist",
+    "outDir": "dist/esm",
     "rootDir": "src",
     "types": []
   },

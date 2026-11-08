@@ -31,7 +31,7 @@ export interface Activity {
 
 /**
  * Where a recording's runs register and report, and how the SDK learns that it
- * closed. Desktop SDKs use the recording's telemetry folder; the browser SDK
+ * closed. Desktop SDKs use the recording's telemetry folder; the JavaScript SDK
  * uses Testing Floor's recording endpoint.
  */
 export interface RecordingStore {
@@ -43,7 +43,7 @@ export interface RecordingStore {
   writeStatus (recording: Recording, sessionId: string, status: Record<string, unknown>): void
 }
 
-export const SDK_VERSION = '0.2.0'
+export const SDK_VERSION = '0.3.0'
 const COMPLETION_RECORD = '$tf_telemetry_complete'
 const STATE_RECORD = '$tf_state'
 const OBJECTS_RECORD = '$tf_objects'
@@ -74,7 +74,7 @@ interface ObjectRow { id: string, kind: string, position: Vector3 | null, state:
 type Vector3 = [number, number, number]
 type Totals = Record<string, number>
 
-/** Configuration and seams. Set before start(); the browser entry point fills engine-backed ones. */
+/** Configuration and seams. Set before start(); runtime adapters supply delivery and scheduling. */
 export interface ClientOptions {
   writeKey?: string
   endpoint?: string
@@ -276,7 +276,8 @@ export class Client {
     if (this.isCollecting()) this.#sendBufferedRecords()
     this.#shutdown = true
     this.#finishRecording('play_exit')
-    this.flush()
+    this.#flushRequested = true
+    this.#sendNext()
   }
 
   /** For a game's own automated tests: collects even in an automated run and sends to a fake transport instead of the network. */

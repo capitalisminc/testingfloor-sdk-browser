@@ -78,3 +78,19 @@ test('a closed answer completes the recording, and an expired lease suspends it 
   assert.equal(marker.$tf.recording_uuid, 'example-recording')
   assert.equal(marker.interrupted, true, 'the lost lease is reported')
 })
+
+test('disposing a poll releases its wait and ignores late responses', async () => {
+  let respond: (response: Response) => void = () => {}
+  let calls = 0
+  const state = new RecordingState(HANDOFF, 'example-key', URL, async () => {
+    calls++
+    return await new Promise<Response>(resolve => { respond = resolve })
+  })
+  const pending = state.poll(0)
+  state.dispose()
+  await pending
+  respond(new Response(JSON.stringify({ closed: false, lease_expires_at_unix_ms: 20_000 })))
+  await state.poll(0)
+  assert.equal(state.source(0)?.leaseVersion, 0)
+  assert.equal(calls, 1)
+})

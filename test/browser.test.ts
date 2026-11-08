@@ -72,6 +72,7 @@ function unloadingPage (fetchResponds: boolean) {
   const listeners = new Map<string, () => void>()
   const fetched: string[] = []
   const beacons: Blob[] = []
+  const replies: Array<() => void> = []
   const environment = {
     location: { href: 'https://game.example/?tf_recording_uuid=example-recording' },
     localStorage: new MemoryStorage() as unknown as Storage,
@@ -81,15 +82,16 @@ function unloadingPage (fetchResponds: boolean) {
     fetch: (async (url: string, init: RequestInit) => {
       if (url.endsWith('/v1/batch')) fetched.push(init.body as string)
       if (fetchResponds) return new Response('{}', { status: 200 })
-      return await new Promise<Response>(() => {})
+      return await new Promise<Response>(resolve => { replies.push(() => resolve(new Response('{}', { status: 200 }))) })
     }) as unknown as typeof fetch
   }
   const names = async (): Promise<string[][]> => await Promise.all(beacons.map(async beacon => JSON.parse(await beacon.text()).events.map((event: { $name: string }) => event.$name)))
-  return { environment, listeners, fetched, beacons, names }
+  return { environment, listeners, fetched, beacons, names, respond: () => { for (const reply of replies) reply() } }
 }
 
-test('closing the page while a request is open hands everything else to sendBeacon, with the marker alone and last', async () => {
+test('closing the page while a request is open hands everything else to sendBeacon, with the marker alone and last', async t => {
   const page = unloadingPage(false)
+  t.after(page.respond)
   const client = createTestingFloor({ writeKey: 'test-only-never-transmitted' }, page.environment)
   for (let index = 0; index < 120; index++) client.track('jumped')
   client.flush()
@@ -112,8 +114,28 @@ test('a game that closes the session itself sends its final events before the ma
   client.flush()
   await new Promise(resolve => setTimeout(resolve, 0))
   assert.equal(client.track('run_ended', { reason: 'page_hidden' }), true)
-  client.close()
+  const closing = client.close()
   assert.equal(client.track('too_late'), false)
+  assert.equal((await closing).status, 'flushed')
   const sent = page.fetched.flatMap(body => JSON.parse(body).events.map((event: { $name: string }) => event.$name)).concat((await page.names()).flat())
   assert.ok(sent.indexOf('run_ended') >= 0 && sent.indexOf('run_ended') < sent.indexOf('$tf_telemetry_complete'), sent.join(', '))
+})
+
+test('an explicit recording wins over the URL and close releases timers and pagehide', async () => {
+  const timers = new Set<unknown>()
+  const listeners = new Map<string, () => void>()
+  const client = createTestingFloor({ writeKey: 'test-only-never-transmitted', recordingUuid: 'example-explicit-recording' }, {
+    location: { href: 'https://game.example/?tf_recording_uuid=example-url-recording' },
+    fetch: async () => new Response('{}'),
+    setInterval: callback => { timers.add(callback); return callback },
+    clearInterval: handle => { timers.delete(handle) },
+    addEventListener: (type, listener) => { listeners.set(type, listener) },
+    removeEventListener: (type, listener) => { if (listeners.get(type) === listener) listeners.delete(type) }
+  })
+  assert.equal(client.getRecording()?.recordingUuid, 'example-explicit-recording')
+  assert.equal(timers.size, 2)
+  assert.equal(listeners.size, 1)
+  assert.equal((await client.close()).status, 'flushed')
+  assert.equal(timers.size, 0)
+  assert.equal(listeners.size, 0)
 })

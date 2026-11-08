@@ -1,30 +1,24 @@
-import { Client, newUuid } from './client.ts'
-import type { ClientOptions, Transport } from './client.ts'
+import { newUuid } from './client.ts'
+import { TestingFloorClient } from './runtime.ts'
+import type { SdkOptions, RuntimeEnvironment } from './runtime.ts'
+import { fetchTransport } from './transport.ts'
+import type { Fetch } from './transport.ts'
 import type { Recording } from './recording.ts'
-import { RECORDING_STATE_POLL_MS, RECORDING_STATE_URL, RecordingState } from './recording-state.ts'
 
 /** The fragment Testing Floor adds to a game URL: #testing-floor=<JSON handoff>. */
 const FRAGMENT = 'testing-floor='
 const HANDOFF_KEY = 'testingfloor.handoff'
 const PROFILE_KEY = 'testingfloor.profile_id'
 const INSTALLATION_KEY = 'testingfloor.installation_id'
-const TICK_MS = 100
 
-export interface BrowserOptions extends Omit<ClientOptions, 'transport' | 'recordingSource' | 'clockMs'> {
-  /** The game's engine and version, such as "Phaser 3.80.1". Left out when not given. */
-  engine?: string
+export interface BrowserOptions extends SdkOptions {
   /** Read the recording handoff from this URL instead of the page's. */
   url?: string
-  /** Testing Floor's recording-state endpoint. */
-  recordingStateUrl?: string
-  /**
-   * Close the session when the page is hidden for good. Turn it off to send
-   * your own final events on pagehide, then call close() after them.
-   */
+  /** Send remaining events with sendBeacon on pagehide. Defaults to true. */
   closeOnPageHide?: boolean
 }
 
-interface Environment {
+export interface BrowserEnvironment extends RuntimeEnvironment {
   location?: { href: string }
   history?: { replaceState (data: unknown, unused: string, url?: string): void }
   sessionStorage?: Storage
@@ -33,65 +27,71 @@ interface Environment {
   innerWidth?: number
   innerHeight?: number
   addEventListener?: (type: string, listener: () => void) => void
-  setInterval?: (handler: () => void, ms: number) => unknown
-  fetch?: typeof fetch
+  removeEventListener?: (type: string, listener: () => void) => void
+  fetch?: Fetch
 }
 
-/** A client for a page: close() ends the session and sends what is left in a way that outlives the page. */
-export class BrowserClient extends Client {
+/** Browser identity, recording handoff, viewport, and pagehide delivery. */
+export class BrowserClient extends TestingFloorClient {
+  #environment: BrowserEnvironment
+  #pagehide: (() => void) | null = null
   #unload: ((body: string) => boolean) | null
+  #unloading = false
 
-  constructor (options: ClientOptions, unload: ((body: string) => boolean) | null) {
-    super(options)
-    this.#unload = unload
+  constructor (options: BrowserOptions, environment: BrowserEnvironment = globalThis as unknown as BrowserEnvironment) {
+    const endpoint = options.endpoint ?? 'https://dataentry.testingfloor.com'
+    const { url, closeOnPageHide = true, ...clientOptions } = options
+    const send = options.fetch ?? environment.fetch?.bind(environment)
+    super({
+      os: 'Web',
+      locale: languageTag(environment.navigator?.language ?? ''),
+      isAutomation: environment.navigator?.webdriver === true,
+      userId: storedId(environment.localStorage, PROFILE_KEY),
+      deviceId: storedId(environment.localStorage, INSTALLATION_KEY),
+      ...clientOptions,
+      fetch: send,
+      recordingHandoff: options.recordingHandoff ?? (options.recordingUuid ? undefined : readHandoff(url ?? environment.location?.href ?? '', environment) ?? undefined),
+      transport: options.transport ?? fetchTransport(endpoint, { fetch: send }, true)
+    }, environment)
+    this.#environment = environment
+    this.#unload = beaconSender(endpoint, environment)
+    this.#screenSize()
+    if (closeOnPageHide) {
+      this.#pagehide = () => this.closeForPage()
+      environment.addEventListener?.('pagehide', this.#pagehide)
+    }
   }
 
-  /**
-   * Ends the play session, completes an attached recording, and hands
-   * everything still queued to sendBeacon. Events tracked afterward are refused.
-   */
-  close (): void {
-    this.shutdown()
+  override tick (nowSeconds: number): void {
+    this.#screenSize()
+    super.tick(nowSeconds)
+  }
+
+  #screenSize (): void {
+    const environment = this.#environment
+    this.screenSize = environment.innerWidth && environment.innerHeight ? { width: environment.innerWidth, height: environment.innerHeight } : null
+  }
+
+  /** Best-effort unload delivery. Beacon acceptance does not acknowledge delivery. */
+  closeForPage (): void {
+    this.#unloading = true
+    void this.close({ timeoutMs: 0 })
     if (this.#unload) this.sendRemaining(this.#unload)
   }
+
+  protected override onClose (): void {
+    if (this.#pagehide) this.#environment.removeEventListener?.('pagehide', this.#pagehide)
+    this.#pagehide = null
+  }
+
+  protected override cancelTransport (): void {
+    if (!this.#unloading) super.cancelTransport()
+  }
 }
 
-/**
- * Starts Testing Floor in a browser game: reads the recording handoff from the
- * page URL, keeps player IDs in local storage, sends with fetch, ticks ten times
- * a second, and closes the session when the page is hidden for good.
- */
-export function createTestingFloor (options: BrowserOptions, environment: Environment = globalThis as Environment): BrowserClient {
-  const page = options.url ?? environment.location?.href ?? ''
-  const endpoint = options.endpoint ?? 'https://dataentry.testingfloor.com'
-  const handoff = readHandoff(page, environment)
-  const state = new RecordingState(handoff, options.writeKey ?? '', options.recordingStateUrl ?? RECORDING_STATE_URL, environment.fetch?.bind(environment))
-  const { closeOnPageHide = true, ...clientOptions } = options
-  const client = new BrowserClient({
-    os: 'Web',
-    locale: languageTag(environment.navigator?.language ?? ''),
-    isAutomation: environment.navigator?.webdriver === true,
-    userId: storedId(environment.localStorage, PROFILE_KEY),
-    deviceId: storedId(environment.localStorage, INSTALLATION_KEY),
-    ...clientOptions,
-    transport: fetchTransport(endpoint, environment),
-    recordingSource: now => state.source(now),
-    recordingStore: state.store
-  }, beaconSender(endpoint, environment))
-  const now = (): number => globalThis.performance?.now() / 1000 || Date.now() / 1000
-  client.screenSize = environment.innerWidth && environment.innerHeight ? { width: environment.innerWidth, height: environment.innerHeight } : null
-  client.start(now())
-  if (handoff) {
-    void state.poll(Date.now())
-    environment.setInterval?.(() => { void state.poll(Date.now()) }, RECORDING_STATE_POLL_MS)
-  }
-  environment.setInterval?.(() => {
-    if (environment.innerWidth && environment.innerHeight) client.screenSize = { width: environment.innerWidth, height: environment.innerHeight }
-    client.tick(now())
-  }, TICK_MS)
-  // pagehide is the last event a page reliably gets, including on mobile.
-  if (closeOnPageHide) environment.addEventListener?.('pagehide', () => client.close())
-  return client
+/** Starts one browser session with persistent IDs and URL recording handoffs. */
+export function createTestingFloor (options: BrowserOptions, environment: BrowserEnvironment = globalThis as unknown as BrowserEnvironment): BrowserClient {
+  return new BrowserClient(options, environment)
 }
 
 /**
@@ -100,7 +100,7 @@ export function createTestingFloor (options: BrowserOptions, environment: Enviro
  * earlier load of this tab saved. The fragment is removed from the address bar
  * and kept in session storage, so a reload keeps the recording.
  */
-export function readHandoff (url: string, environment: Environment = globalThis as Environment): string | null {
+export function readHandoff (url: string, environment: BrowserEnvironment = globalThis as unknown as BrowserEnvironment): string | null {
   let handoff: string | null = null
   let parsed: URL | null = null
   try {
@@ -155,29 +155,8 @@ function storedId (storage: Storage | undefined, key: string): string {
   }
 }
 
-/**
- * Sends as text/plain, which browsers send across origins without a preflight.
- * A response the page cannot read counts as a network failure, so the batch is
- * retried with the same event IDs.
- */
-export function fetchTransport (endpoint: string, environment: Environment = globalThis as Environment): Transport {
-  const url = `${endpoint.trim().replace(/\/+$/, '')}/v1/batch`
-  return (body, done) => {
-    const send = environment.fetch
-    if (!send) {
-      done(0)
-      return
-    }
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10_000)
-    send(url, { method: 'POST', body, headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, keepalive: body.length < 60_000, signal: controller.signal })
-      .then(response => done(response.status), () => done(0))
-      .finally(() => clearTimeout(timeout))
-  }
-}
-
 /** Sends one request body with sendBeacon, which outlives the page, or null where there is none. */
-function beaconSender (endpoint: string, environment: Environment): ((body: string) => boolean) | null {
+function beaconSender (endpoint: string, environment: BrowserEnvironment): ((body: string) => boolean) | null {
   const beacon = environment.navigator?.sendBeacon?.bind(environment.navigator)
   if (!beacon) return null
   const url = `${endpoint.trim().replace(/\/+$/, '')}/v1/batch`
@@ -185,3 +164,6 @@ function beaconSender (endpoint: string, environment: Environment): ((body: stri
 }
 
 export type { Recording }
+
+export { fetchTransport } from './transport.ts'
+export type { FlushOptions, FlushResult } from './runtime.ts'
