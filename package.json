@@ -1,14 +1,16 @@
 {
-  "name": "@testingfloor/browser",
+  "name": "@testingfloor/js",
   "version": "0.3.0",
-  "description": "Testing Floor SDK for browser games: gameplay telemetry and recording sync for playtests.",
+  "description": "Testing Floor JavaScript SDK: gameplay telemetry and recording sync for browsers, Node.js, Bun, Deno, and workers.",
   "keywords": [
     "testingfloor",
     "telemetry",
     "analytics",
     "playtest",
     "gamedev",
-    "phaser"
+    "javascript",
+    "node",
+    "browser"
   ],
   "homepage": "https://github.com/capitalisminc/testingfloor-sdk-browser#readme",
   "bugs": "https://github.com/capitalisminc/testingfloor-sdk-browser/issues",
@@ -21,15 +23,42 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      },
+      "default": "./dist/esm/index.js"
+    },
+    "./browser": {
+      "import": {
+        "types": "./dist/esm/browser.d.ts",
+        "default": "./dist/esm/browser.js"
+      },
+      "require": {
+        "types": "./dist/cjs/browser.d.ts",
+        "default": "./dist/cjs/browser.js"
+      },
+      "default": "./dist/esm/browser.js"
     },
     "./internal": {
-      "types": "./dist/internal.d.ts",
-      "default": "./dist/internal.js"
+      "import": {
+        "types": "./dist/esm/internal.d.ts",
+        "default": "./dist/esm/internal.js"
+      },
+      "require": {
+        "types": "./dist/cjs/internal.d.ts",
+        "default": "./dist/cjs/internal.js"
+      },
+      "default": "./dist/esm/internal.js"
     }
   },
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
   "files": [
     "dist",
     "CHANGELOG.md"
@@ -38,11 +67,17 @@
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "node scripts/build.mjs",
+    "test:package": "npm run build && node scripts/check-package.mjs",
+    "test:browser": "npm run build && node scripts/check-package.mjs --browser",
     "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
+    "playwright": "1.65.0",
     "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }

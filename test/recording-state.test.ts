@@ -105,3 +105,19 @@ test('unknown answers cannot extend startup grace or revive an expired live leas
   client.tick(42)
   assert.equal(client.getRecording(), null, '404 cannot turn an expired confirmed lease into an unbounded handoff')
 })
+
+test('disposing a poll releases its wait and ignores late responses', async () => {
+  let respond: (response: Response) => void = () => {}
+  let calls = 0
+  const state = new RecordingState(HANDOFF, 'example-key', URL, async () => {
+    calls++
+    return await new Promise<Response>(resolve => { respond = resolve })
+  })
+  const pending = state.poll(0)
+  state.dispose()
+  await pending
+  respond(new Response(JSON.stringify({ closed: false, lease_expires_at_unix_ms: 20_000 })))
+  await state.poll(0)
+  assert.equal(state.source(0)?.leaseExpiresAtUnixMs, 20_000)
+  assert.equal(calls, 1)
+})

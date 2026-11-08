@@ -1,7 +1,7 @@
 /** A recording handoff from Testing Floor, as the SDK contract describes. */
 export interface Recording {
   recordingUuid: string
-  /** Where the run registers and reports; for browser games, Testing Floor's recording URL. */
+  /** Where the run registers and reports; HTTP clients use Testing Floor's recording URL. */
   telemetryDirectory: string
   /** 0 when absent. */
   playtestId: number

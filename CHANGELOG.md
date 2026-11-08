@@ -1,7 +1,12 @@
 # Changelog
 
-## 0.3.0
+## 0.3.0 — Unreleased
 
+- Renames the package to `@testingfloor/js`, with a runtime-independent main entry point for Node.js, Bun, Deno, and workers, and browser setup at `@testingfloor/js/browser`.
+- Adds ESM and CommonJS builds, with main-entry TypeScript declarations that do not need DOM types.
+- Adds awaitable `flush()`, `close()`, and `shutdown()` with deadlines and delivery results. Closing releases managed timers and listeners and cancels unfinished built-in HTTP requests.
+- Supports explicit user/session IDs and recording handoffs outside browsers. Each client owns one play session.
+- Retains browser storage keys, URL handoffs, and automatic pagehide beacon delivery. Custom pagehide handlers use `closeForPage()`; explicit `close()` now waits for HTTP delivery.
 - Require a stable game ID and isolate browser identities and handoffs per game.
 - Bound unconfirmed recording handoffs; preserve expired confirmed leases on 404.
 - Mark beacon completion as unconfirmed and carry recording pauses into collection policy.
@@ -9,7 +14,8 @@
 - Move automatic movement/teleport events into the reserved SDK namespace.
 - Limit root exports to the game API; protocol helpers move to the unstable `/internal` entrypoint.
 
-This is a source API upgrade: add `gameId` and migrate protocol-helper imports.
+This is a source API upgrade: browser clients use `/browser` with `gameId`, and
+protocol helpers use `/internal`.
 Installed older games retain their existing wire support. Coordinate conversion
 and recording-only mode are opt-in.
 
