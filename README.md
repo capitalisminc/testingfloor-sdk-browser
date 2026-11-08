@@ -186,7 +186,7 @@ Browser profile IDs, installation IDs, and recording handoffs remain scoped to a
 - Await `flush()`, `close()`, or `shutdown()` when delivery must finish before the host exits.
 - Custom pagehide handlers should call `closeForPage()` to retain beacon delivery. The default handler still does this automatically.
 
-The current telemetry contract, recording behavior, game-scoped browser storage, build identity, and coordinate conversion are preserved. The new npm package needs to be created and configured for trusted publishing before its first release. Renaming the GitHub repository to `testingfloor-sdk-js` and updating the package's repository links are separate release steps; the links continue to point at the existing public repository until then. The old npm package remains available; maintainers can add a migration notice after the new package is published.
+The current telemetry contract, recording behavior, game-scoped browser storage, build identity, and coordinate conversion are preserved. The repository is now `testingfloor-sdk-js`. The new npm name needs an initial authenticated publish before trusted publishing can be configured. Once the new package is installable, maintainers can deprecate `@testingfloor/browser` with a migration notice while keeping its existing versions available. See the [release guide](https://github.com/capitalisminc/testingfloor-sdk-js/blob/main/RELEASING.md) for the CLI steps.
 
 ## Supported API
 
@@ -248,7 +248,7 @@ Tests run the shared contract scenarios and check event fields, delivery, concur
 
 Development needs Node 22.18 or later to run TypeScript directly. `npm run build` writes ESM and CommonJS builds to `dist/`. `python3 scripts/update_contract.py` refreshes the contract copy; `--check` confirms it.
 
-After npm trusted publishing is configured for the new package, a `v<version>` tag matching `package.json` publishes it from GitHub Actions with provenance.
+After the initial npm publish and CLI trusted-publisher setup, a new `v<version>` tag matching `package.json` publishes that version from GitHub Actions with provenance. The [release guide](https://github.com/capitalisminc/testingfloor-sdk-js/blob/main/RELEASING.md) covers setup, later releases, and deprecating the old package.
 
 ## License
 
