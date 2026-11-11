@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.1 — 2026-11-10
+
+- Publish from GitHub Actions with npm trusted publishing and provenance. The runtime API and behavior are unchanged.
+
+## 0.3.0 — 2026-11-07
 
 - Renames the package to `@testingfloor/js`, with a runtime-independent main entry point for Node.js, Bun, Deno, and workers, and browser setup at `@testingfloor/js/browser`.
 - Adds ESM and CommonJS builds, with main-entry TypeScript declarations that do not need DOM types.

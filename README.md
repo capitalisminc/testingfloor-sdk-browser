@@ -88,11 +88,11 @@ const testingFloor = createTestingFloor({
 testingFloor.track('level_started', { 'game_level.id': 'forest' })
 ```
 
-Without a bundler, use a CDN module import after the package is published:
+Without a bundler, use a CDN module import:
 
 ```html
 <script type="module">
-  import { createTestingFloor } from 'https://cdn.jsdelivr.net/npm/@testingfloor/js@0.3.0/dist/esm/browser.js'
+  import { createTestingFloor } from 'https://cdn.jsdelivr.net/npm/@testingfloor/js@0.3.1/dist/esm/browser.js'
 </script>
 ```
 
@@ -186,7 +186,7 @@ Browser profile IDs, installation IDs, and recording handoffs remain scoped to a
 - Await `flush()`, `close()`, or `shutdown()` when delivery must finish before the host exits.
 - Custom pagehide handlers should call `closeForPage()` to retain beacon delivery. The default handler still does this automatically.
 
-The current telemetry contract, recording behavior, game-scoped browser storage, build identity, and coordinate conversion are preserved. The repository is now `testingfloor-sdk-js`. The new npm name needs an initial authenticated publish before trusted publishing can be configured. Once the new package is installable, maintainers can deprecate `@testingfloor/browser` with a migration notice while keeping its existing versions available. See the [release guide](https://github.com/capitalisminc/testingfloor-sdk-js/blob/main/RELEASING.md) for the CLI steps.
+The current telemetry contract, recording behavior, game-scoped browser storage, build identity, and coordinate conversion are preserved. The repository is now `testingfloor-sdk-js`, and `@testingfloor/js` is available on npm. The old `@testingfloor/browser` package is deprecated with a migration notice; its existing versions remain available. See the [release guide](https://github.com/capitalisminc/testingfloor-sdk-js/blob/main/RELEASING.md) for the CLI steps.
 
 ## Supported API
 

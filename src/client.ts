@@ -45,7 +45,7 @@ export interface RecordingStore {
   writeStatus (recording: Recording, sessionId: string, status: Record<string, unknown>): void
 }
 
-export const SDK_VERSION = '0.3.0'
+export const SDK_VERSION = '0.3.1'
 const COMPLETION_RECORD = '$tf_telemetry_complete'
 const STATE_RECORD = '$tf_state'
 const OBJECTS_RECORD = '$tf_objects'

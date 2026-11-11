@@ -1,6 +1,6 @@
 {
   "name": "@testingfloor/js",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Testing Floor JavaScript SDK: gameplay telemetry and recording sync for browsers, Node.js, Bun, Deno, and workers.",
   "keywords": [
     "testingfloor",
